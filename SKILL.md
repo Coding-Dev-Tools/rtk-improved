@@ -13,7 +13,7 @@ compatibility: >-
   normally if it isn't installed.
 metadata:
   author: Coding-Dev-Tools
-  version: "0.2.0"
+  version: "1.0.0"
   homepage: https://github.com/rtk-ai/rtk
 allowed-tools: Bash(rtk:*) Bash(git:*) Bash(cargo:*) Bash(ls:*) Bash(cat:*) Bash(grep:*) Bash(find:*) Bash(diff:*) Bash(docker:*) Bash(kubectl:*) Bash(gh:*) Bash(glab:*) Bash(pnpm:*) Bash(npm:*) Bash(pip:*) Bash(bundle:*) Bash(ruff:*) Bash(tsc:*) Bash(eslint:*) Bash(pytest:*) Bash(go:*) Bash(jest:*) Bash(vitest:*) Bash(dotnet:*) Bash(aws:*) Bash(psql:*) Bash(prisma:*) Bash(wget:*)
 ---
@@ -103,6 +103,23 @@ low-savings outliers worth dropping); on failure RTK's tee fallback keeps the
 full output. Optimize **net** tokens (savings minus re-runs), not the headline
 number. Full reference:
 [references/analytics.md](references/analytics.md).
+
+## Compatibility & limitations
+
+- **No native Command Code hook yet.** `rtk init` doesn't list Command Code, so
+  the manual-prefix path (Method 2) is the working default; an auto-rewrite hook
+  needs hand-wiring until Command Code is supported upstream.
+- **Exit codes.** RTK aims to pass the wrapped command's exit code through, but it
+  isn't guaranteed for every command/version. When a pass/fail verdict matters
+  (tests, gates), trust the raw exit code or re-run raw / `rtk proxy <cmd>`.
+- **Piped output.** The harness captures stdout as a non-TTY pipe; RTK may still
+  emit icons/decoration ([RTK #1282](https://github.com/rtk-ai/rtk/issues/1282)).
+  For anything you'll parse, run raw; set `NO_COLOR=1` if decoration leaks in.
+- **Streaming.** RTK buffers to filter, so don't wrap `-f`/follow or growing logs.
+- **PATH.** In a non-interactive shell `rtk` may not be found; the integration
+  treats it as optional and falls back to raw commands.
+- **Permissions.** `rtk` (and `rtk proxy`) can execute arbitrary wrapped commands
+  — allow-list it deliberately.
 
 ## Prerequisite
 

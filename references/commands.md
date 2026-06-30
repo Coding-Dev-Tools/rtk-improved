@@ -8,7 +8,7 @@ output**. The skill is knowing *when* that helps. Three tiers:
   failures: use plain `rtk` (which keeps errors/diffs), never `-u`/aggressive.
 - 🔴 **Keep full fidelity** — run raw; compression risks dropping what you need.
 
-Plain `rtk <cmd>` is near-lossless. `-u` / `--ultra-compact`, `rtk read … -l
+Plain `rtk <cmd>` keeps the signal and strips only noise. `-u` / `--ultra-compact`, `rtk read … -l
 aggressive`, and `rtk smart` (2-line summary) are lossy — reserve them for
 skimming something huge and unimportant.
 
@@ -18,10 +18,10 @@ skimming something huge and unimportant.
 | `ls -la` | `rtk ls` | listings dedup/group cleanly |
 | `git status`, `git log -n 20` | `rtk git status`, `rtk git log -n 20` | already summaries |
 | `docker ps`, `docker images` | `rtk docker ps`, `rtk docker images` | tabular, repetitive |
-| `docker logs <c>`, `kubectl logs <p>` | `rtk docker logs <c>`, `rtk kubectl logs <p>` | dedups repeated lines |
+| `docker logs <c>`, `kubectl logs <p>` (finite) | `rtk docker logs <c>`, `rtk kubectl logs <p>` | dedups repeated lines — **never** with `-f`/follow |
 | `kubectl get pods/services` | `rtk kubectl pods`, `rtk kubectl services` | tabular |
 | `pip list`, `pnpm list`, `bundle install` | `rtk pip list`, `rtk pnpm list`, `rtk bundle install` | long dependency dumps |
-| `cat app.log` (triage) | `rtk log app.log` | collapses repeated log lines with counts |
+| `cat app.log` (static triage) | `rtk log app.log` | collapses repeated lines — not for `-f`/follow |
 | `env` (scan, non-secret) | `rtk env -f AWS` | filters to a prefix |
 
 ## 🟡 Default mode only — keep the failures, drop the green
@@ -43,6 +43,15 @@ the `file:line` you need, which forces a re-run that costs more than it saved.
 | Secrets / credentials / exact config | run raw | never reason about a lossy view |
 | A file you'll **edit** | native Read tool | lossless + line numbers; bypasses RTK anyway |
 | You need everything, just this once | `rtk proxy <cmd>` | passthrough + still tracks savings |
+
+## Harness notes
+
+- **Streaming/follow** (`-f`, `tail -f`, a growing log) → run raw; RTK buffers and can hang.
+- **Exit status** → for a pass/fail verdict that matters (tests, gates), trust the
+  command's raw exit code; if unsure RTK preserved it, re-run raw or `rtk proxy`.
+- **Piped output** → RTK may emit icons/decoration over a non-TTY pipe; for anything
+  you'll parse, run raw (set `NO_COLOR=1` if decoration leaks in).
+- **Native tools** → prefer the built-in file/search tools over `rtk read/grep/find`.
 
 ## Analytics
 

@@ -129,15 +129,17 @@ leaves precise output alone:
 | Category | Command | Through RTK? | Est. savings |
 |---|---|---|---|
 | Status / listings | `rtk git status`, `rtk ls`, `rtk git log` | 🟢 yes | ~80% |
-| Logs / containers | `rtk docker ps`, `rtk log app.log` | 🟢 yes | ~80% |
+| Logs / containers | `rtk docker ps`, `rtk log app.log` *(static, not `-f`)* | 🟢 yes | ~80% |
 | Dependencies | `rtk pip list`, `rtk pnpm list` | 🟢 yes | ~70% |
 | Tests / build | `rtk cargo test`, `rtk err <cmd>` | 🟡 plain mode (keeps failures) | ~90% |
 | Diffs you'll apply | `git diff`, `git show` | 🔴 run raw | — |
 | JSON / parsed output | `… --format json` | 🔴 run raw | — |
 | Files you'll edit | native Read tool | 🔴 not RTK | — |
 
-_Savings are illustrative; actual numbers vary by command and output size. Run
-`rtk gain` to measure your own — and `rtk discover` to spot poor fits._
+_Savings are illustrative and apply to **large** output — small outputs can be
+net-neutral or negative. Run streaming/`-f` commands, and anything whose pass/fail
+exit code matters, **raw** (see [Compatibility & limitations](#compatibility--limitations)).
+Run `rtk gain` to measure your own; `rtk discover` to spot poor fits._
 
 See [references/commands.md](references/commands.md) for the full tiered list and
 [references/analytics.md](references/analytics.md) for measuring net savings.
@@ -155,6 +157,46 @@ accumulated savings. Track **net** savings, not just the headline number:
 tee fallback keeps full output whenever a command fails. See
 [references/analytics.md](references/analytics.md).
 
+## Compatibility & limitations
+
+This is a documentation/instruction integration: it tells Command Code *when* to
+route output through the real [RTK](https://github.com/rtk-ai/rtk) binary. A few
+things to know before relying on it:
+
+- **No native Command Code hook (yet).** RTK's `rtk init` supports Claude Code,
+  Copilot, Cursor, Gemini, Cline, and others — **not** Command Code. So
+  `rtk init -g` won't wire up Command Code; the manual-prefix path this repo
+  installs is the working default. Closing that gap upstream is the goal in
+  [Upstream](#upstream) below.
+- **Exit-code fidelity.** Agent harnesses key success off a command's exit code.
+  RTK aims to pass it through, but this has been fixed command-by-command and
+  isn't guaranteed for every command/version. **For a pass/fail that matters
+  (tests, CI gates), trust the raw exit code** — or run the command raw /
+  `rtk proxy`. The tiers keep `rtk cargo test` in *plain* mode, never aggressive.
+- **Piped (non-TTY) output.** A harness captures stdout as a pipe. RTK can still
+  emit icons/decoration there (RTK issue
+  [#1282](https://github.com/rtk-ai/rtk/issues/1282)), which wastes tokens or
+  corrupts parsed output. Run anything you'll parse **raw**, and set `NO_COLOR=1`
+  if decoration leaks in.
+- **Streaming / follow.** RTK buffers output to filter it, so `-f`, `tail -f`, or
+  a growing log can hang. Run those raw.
+- **PATH.** A non-interactive shell may not find `rtk`; the integration treats it
+  as optional and falls back to the bare command, so a missing binary is a no-op,
+  not a failure.
+- **Native tools.** Command Code's built-in file/search tools (Read/Grep/Glob)
+  are lossless, give line numbers, and don't pass through RTK — prefer them over
+  `rtk read/grep/find`.
+- **Permissions.** `rtk` (especially `rtk proxy <cmd>`) can execute arbitrary
+  wrapped commands, so an `rtk` allow-list entry is broad by nature — grant it
+  deliberately.
+- **Hooks on Windows.** RTK's filters work on Windows, but its auto-rewrite hook
+  has gaps there (RTK
+  [discussion #671](https://github.com/rtk-ai/rtk/discussions/671)); `.ps1` stays
+  CRLF per `.gitattributes`.
+
+None of these corrupt your repository — the worst case is a failed or misread
+tool call that's recoverable by re-running raw.
+
 ## Files
 
 ```
@@ -170,6 +212,7 @@ rtk-command-code/
 ├── CONTRIBUTING.md        # How to contribute
 ├── CODE_OF_CONDUCT.md     # Contributor Covenant
 ├── SECURITY.md            # Vulnerability reporting policy
+├── CHANGELOG.md           # Release history
 ├── LICENSE                # Apache 2.0
 └── README.md              # This file
 ```

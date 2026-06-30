@@ -8,11 +8,10 @@ These rules keep it net-positive.
 
 ## Setup
 
-RTK is optional. If `rtk --version` fails, run commands normally — never block
-work to install it. Best setup: install RTK's auto-rewrite hook once with
-`rtk init -g` (then restart Command Code) so Bash commands are rewritten to `rtk`
-automatically and you never prefix by hand. Without a hook, prefix manually per
-the tiers in @references/commands.md.
+RTK is optional. If `rtk --version` fails or `rtk` isn't on PATH, run commands
+normally — never block work to install it. There's no auto-rewrite hook for
+Command Code yet (RTK's `rtk init` doesn't target it), so prefix commands
+yourself per the tiers in @references/commands.md.
 
 ## The one rule: compress noise, preserve signal
 
@@ -37,6 +36,16 @@ Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes �
 and strips only noise. `-u` / `--ultra-compact`, `rtk read … -l aggressive`, and `rtk smart`
 (2-line summary) are **lossy** — opt-in only for skimming something huge and
 unimportant, never your default.
+
+## Harness safety — don't let it break the tool call
+
+- **Don't wrap streaming/follow output** (`-f`, `tail -f`, a growing log): RTK
+  buffers output to filter it, so it can hang the command. Run these raw.
+- **When a pass/fail verdict matters** (tests, CI gates), trust the command's raw
+  exit code. If you can't tell whether the `rtk` view preserved it, re-run raw or
+  use `rtk proxy <cmd>`.
+- **Prefer the native file/search tools** over `rtk ls/grep/find/read` — they're
+  lossless, give line numbers, and don't pass through RTK anyway.
 
 ## If a compressed view isn't enough
 
