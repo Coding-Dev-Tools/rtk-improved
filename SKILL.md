@@ -39,21 +39,23 @@ the winning side.
 
 ## Install — two ways
 
-### 1. Auto-rewrite hook (recommended)
+### 1. Auto-rewrite hook (best where supported)
 
-Let a `PreToolUse` hook rewrite Bash commands to their `rtk` equivalents
-automatically, so you never prefix by hand and nothing gets forgotten. RTK ships
-this for natively-supported agents:
+A `PreToolUse` hook rewrites Bash commands to their `rtk` equivalents
+automatically, so you never prefix by hand and nothing gets forgotten:
 
 ```bash
 rtk init -g          # installs the PreToolUse rewrite hook, then restart the agent
 ```
 
-RTK natively targets Claude Code, Copilot, Cursor, Gemini, Cline, and more.
-Command Code also supports `PreToolUse` hooks — register one that pipes the Bash
+**Caveat for Command Code:** `rtk init`'s agent list is Claude Code, Copilot,
+Cursor, Gemini, Cline, and more — it does **not** include Command Code yet, so
+`rtk init -g` wires up Claude Code/Copilot, not Command Code. Command Code does
+support `PreToolUse` hooks, so you can register one yourself that pipes the Bash
 command through RTK's rewrite (see the Command Code hooks docs and `rtk init
---help`). With a hook installed you **run normal commands**, and only need the
-fidelity rules below for the cases where you want to *bypass* compression.
+--help`). Until Command Code is supported upstream, Method 2 is the reliable path.
+With a hook installed you **run normal commands** and only need the fidelity rules
+below to *bypass* compression.
 
 ### 2. Manual prefixing (no hook)
 
@@ -78,7 +80,7 @@ Full tiered table: [references/commands.md](references/commands.md).
 Use the *least* compression that still answers the question:
 
 ```
-raw / native Read  →  rtk <cmd> (near-lossless, default)  →  -u / -l aggressive / rtk smart (lossy, skim-only)
+raw / native Read  →  rtk <cmd> (keeps signal, default)  →  -u / -l aggressive / rtk smart (lossy, skim-only)
 ```
 
 Start as far left as the task needs. Escalate compression only for big, boring
@@ -96,9 +98,10 @@ blindly.
 
 ## Measure net savings
 
-`rtk gain` shows gross savings; `rtk gain --failures` shows what passed through
-raw; `rtk discover` finds good new targets. Optimize **net** tokens (savings
-minus re-runs), not the headline number. Full reference:
+`rtk gain` shows gross savings; `rtk discover` finds good new targets (and
+low-savings outliers worth dropping); on failure RTK's tee fallback keeps the
+full output. Optimize **net** tokens (savings minus re-runs), not the headline
+number. Full reference:
 [references/analytics.md](references/analytics.md).
 
 ## Prerequisite

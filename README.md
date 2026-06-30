@@ -11,9 +11,10 @@ learns your coding style.
 Command Code CLI reads `~/.commandcode/AGENTS.md` and injects it into the system
 prompt for every session. This repository provides that AGENTS.md file (plus a
 loadable skill), teaching Command Code to route **noisy** shell output through
-`rtk` while keeping **full fidelity** for output it needs exactly. The fastest
-setup is RTK's auto-rewrite hook (`rtk init -g`), which rewrites commands for you
-so nothing has to be prefixed by hand.
+`rtk` while keeping **full fidelity** for output it needs exactly. `rtk init`
+doesn't target Command Code yet, so the working default is this memory file — the
+agent prefixes commands itself; register a Command Code `PreToolUse` hook and RTK
+can rewrite them for you automatically.
 
 ```
 Without RTK:                                 With RTK:
@@ -40,14 +41,15 @@ command.
 
 Two design choices keep it net-positive:
 
-- **Lossless by default.** Plain `rtk <cmd>` preserves errors, stack traces, diff
-  hunks, and exit codes; the lossy modes (`-u` / `--ultra-compact`, `-l
-  aggressive`, `rtk smart`) are opt-in for skimming only — never the default. On
-  output it can't parse, RTK falls back to the full raw text.
+- **Signal-preserving by default.** Plain `rtk <cmd>` keeps errors, stack traces,
+  diff hunks, and exit codes and strips only noise; the lossy modes (`-u` /
+  `--ultra-compact`, `-l aggressive`, `rtk smart`) are opt-in for skimming only —
+  never the default. If a command fails or RTK can't parse its output, you get the
+  full raw text back (tee fallback).
 - **Measure net, not gross.** `rtk gain` reports gross savings; the goal is *net*
   — savings minus any re-runs and minus the standing cost of these instructions.
-  `rtk gain --failures` and `rtk discover` show where RTK fits and where it
-  doesn't (see [references/analytics.md](references/analytics.md)).
+  `rtk discover` shows where RTK fits and where savings run low (see
+  [references/analytics.md](references/analytics.md)).
 
 This matters for quality too: every frontier model degrades as irrelevant context
 grows ("context rot" / "lost in the middle"), so cutting genuine noise can *help*
@@ -70,10 +72,11 @@ the first and avoid the second.
 > enforcement, install the memory (Method 2); the skill (Method 1) is the
 > quickest install and is enough when you mainly want it during shell-heavy work.
 
-> **Even better — the auto-rewrite hook.** RTK can install a `PreToolUse` hook
-> (`rtk init -g`) that rewrites Bash commands to `rtk` automatically, so the agent
-> never prefixes anything by hand. Pair it with the memory or skill below, which
-> carry the *when-to-compress* rules. See `rtk init --help`.
+> **Optional — the auto-rewrite hook.** A `PreToolUse` hook can rewrite Bash
+> commands to `rtk` automatically so the agent never prefixes by hand. Note that
+> RTK's `rtk init` installer doesn't target Command Code yet (`rtk init -g` wires
+> up Claude Code/Copilot), so for Command Code you'd register the hook yourself.
+> Until then, Method 2 below is the reliable path. See `rtk init --help`.
 
 ### Method 1: Skill (quick install, on-demand)
 
@@ -125,7 +128,7 @@ leaves precise output alone:
 
 | Category | Command | Through RTK? | Est. savings |
 |---|---|---|---|
-| Status / listings | `rtk git status`, `rtk ls`, `rtk tree` | 🟢 yes | ~80% |
+| Status / listings | `rtk git status`, `rtk ls`, `rtk git log` | 🟢 yes | ~80% |
 | Logs / containers | `rtk docker ps`, `rtk log app.log` | 🟢 yes | ~80% |
 | Dependencies | `rtk pip list`, `rtk pnpm list` | 🟢 yes | ~70% |
 | Tests / build | `rtk cargo test`, `rtk err <cmd>` | 🟡 plain mode (keeps failures) | ~90% |
@@ -134,7 +137,7 @@ leaves precise output alone:
 | Files you'll edit | native Read tool | 🔴 not RTK | — |
 
 _Savings are illustrative; actual numbers vary by command and output size. Run
-`rtk gain` to measure your own — and `rtk gain --failures` to spot poor fits._
+`rtk gain` to measure your own — and `rtk discover` to spot poor fits._
 
 See [references/commands.md](references/commands.md) for the full tiered list and
 [references/analytics.md](references/analytics.md) for measuring net savings.
@@ -148,8 +151,8 @@ rtk gain --graph        # Visual savings chart
 
 After running a few commands through Command Code, `rtk gain` will show the
 accumulated savings. Track **net** savings, not just the headline number:
-`rtk gain --failures` lists commands RTK had to pass through raw (poor fits), and
-`rtk discover` finds new high-value targets. See
+`rtk discover` finds new high-value targets and low-savings outliers, and RTK's
+tee fallback keeps full output whenever a command fails. See
 [references/analytics.md](references/analytics.md).
 
 ## Files

@@ -15,7 +15,7 @@ skimming something huge and unimportant.
 ## 🟢 Compress freely (skim-only output)
 | Instead of | Use | Why it's safe |
 |---|---|---|
-| `ls -la`, `tree` | `rtk ls`, `rtk tree` | listings dedup/group cleanly |
+| `ls -la` | `rtk ls` | listings dedup/group cleanly |
 | `git status`, `git log -n 20` | `rtk git status`, `rtk git log -n 20` | already summaries |
 | `docker ps`, `docker images` | `rtk docker ps`, `rtk docker images` | tabular, repetitive |
 | `docker logs <c>`, `kubectl logs <p>` | `rtk docker logs <c>`, `rtk kubectl logs <p>` | dedups repeated lines |
@@ -38,7 +38,7 @@ the `file:line` you need, which forces a re-run that costs more than it saved.
 | Situation | Do this | Why |
 |---|---|---|
 | A diff/patch you'll apply | `git diff`, `git show` **raw** | exact bytes and line numbers matter |
-| Output you'll parse (JSON, `--format`) | run raw; `rtk json file --keys-only` only to *explore* structure | compression can corrupt structure |
+| Output you'll parse (JSON, `--format`) | run raw; use `rtk json file` only to *explore* structure | compression can corrupt structure |
 | Small output (≲30 lines) | run raw | nothing to save, real risk |
 | Secrets / credentials / exact config | run raw | never reason about a lossy view |
 | A file you'll **edit** | native Read tool | lossless + line numbers; bypasses RTK anyway |
@@ -47,7 +47,7 @@ the `file:line` you need, which forces a re-run that costs more than it saved.
 ## Analytics
 
 Measuring real savings — and spotting bad fits before they cost you — lives in
-[analytics.md](analytics.md): `rtk gain`, `rtk gain --failures`, `rtk discover`.
+[analytics.md](analytics.md): `rtk gain`, `rtk discover`, and the tee fallback.
 
 > RTK supports 100+ commands. Run `rtk --help` for the full set; the tiers above
 > are the decision rule, not an exhaustive list. When a command isn't listed,

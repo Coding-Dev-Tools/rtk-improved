@@ -17,7 +17,7 @@ the tiers in @references/commands.md.
 ## The one rule: compress noise, preserve signal
 
 Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
-study: `rtk ls`, `rtk tree`, `rtk git status`, `rtk git log`, `rtk docker ps`,
+study: `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`,
 `rtk pip list`, and big test/build runs (`rtk cargo test`, or `rtk err <cmd>` —
 RTK keeps the failures and drops the green).
 
@@ -33,15 +33,15 @@ When unsure, start raw. Lean context comes from cutting *noise*, not *signal*.
 
 ## Never default to lossy modes
 
-Plain `rtk <cmd>` is near-lossless (keeps errors, diffs, stack traces, exit
-codes). `-u` / `--ultra-compact`, `rtk read … -l aggressive`, and `rtk smart`
+Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
+and strips only noise. `-u` / `--ultra-compact`, `rtk read … -l aggressive`, and `rtk smart`
 (2-line summary) are **lossy** — opt-in only for skimming something huge and
 unimportant, never your default.
 
 ## If a compressed view isn't enough
 
-RTK retains the full unfiltered output, so you don't have to guess and you
-shouldn't thrash: re-run that one command raw (or `rtk proxy <cmd>`) to see
+On failure, RTK's tee fallback already kept the full output. Otherwise don't
+guess or thrash: re-run that one command raw (or `rtk proxy <cmd>`) to see
 everything, then move on. One deliberate re-run is fine; blind repeated re-runs
 erase the savings.
 
