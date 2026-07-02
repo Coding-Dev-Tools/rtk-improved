@@ -32,5 +32,10 @@ done
 # CHANGELOG.md version header
 grep -qE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' "$ROOT/CHANGELOG.md" || { echo "FAIL: CHANGELOG.md no version header"; fail=1; }
 
+# Validate install.ps1 syntax (if pwsh available)
+if command -v pwsh &>/dev/null; then
+  pwsh -NoProfile -Command "\$e=@(); [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw install.ps1),[ref]\$e)|Out-Null; if(\$e.Count){exit 1}" 2>/dev/null || { echo "FAIL: install.ps1 syntax error"; fail=1; }
+fi
+
 echo "=== $([ "$fail" -eq 0 ] && echo 'ALL PASSED' || echo 'SOME FAILED') ==="
 exit $fail
