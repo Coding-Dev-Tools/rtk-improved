@@ -46,3 +46,13 @@ jobs:
             [ -f "$f" ] || { echo "SKILL.md: referenced file not found: $f"; exit 1; }
           done
           echo "SKILL.md OK"
+
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run validation tests
+        run: bash tests/validate.sh
