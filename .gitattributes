@@ -1,0 +1,32 @@
+# Normalize line endings in the repository.
+# OneDrive sync had introduced mixed CRLF/LF; these rules keep the stored
+# blobs consistent (LF) and check files out with the right endings per type.
+
+# Default: treat as text, store as LF in the repo.
+* text=auto eol=lf
+
+# Shell scripts MUST be LF — CRLF breaks shebangs and heredocs.
+*.sh        text eol=lf
+
+# PowerShell scripts use CRLF in the working tree (native on Windows).
+*.ps1       text eol=crlf
+
+# Documentation / config — explicit LF.
+*.md        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.txt       text eol=lf
+LICENSE     text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+
+# Binary assets — never normalize or diff as text.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.zip       binary
+*.gz        binary
+*.pdf       binary

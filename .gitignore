@@ -1,0 +1,8 @@
+# Machine-local agent/editor scratch (not part of the published integration).
+# NOTE: AGENTS.md is intentionally NOT ignored — it is a tracked deliverable.
+.agents/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp

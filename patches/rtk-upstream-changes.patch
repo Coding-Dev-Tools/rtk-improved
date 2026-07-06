@@ -1,0 +1,894 @@
+diff --git a/hooks/README.md b/hooks/README.md
+index d14fbd4..b3e1d2a 100644
+--- a/hooks/README.md
++++ b/hooks/README.md
+@@ -33,15 +33,17 @@ All rewrite logic lives in the Rust binary (`src/discover/registry.rs`). Hook sc
+ 
+ Each agent subdirectory has its own README with hook-specific details:
+ 
+-- **[`claude/`](claude/README.md)** — Shell hook, `PreToolUse` JSON format, `settings.json` patching, test script
+-- **[`copilot/`](copilot/README.md)** — Rust binary hook, dual format (VS Code Chat vs Copilot CLI), deny-with-suggestion fallback
+-- **[`cursor/`](cursor/README.md)** — Shell hook, Cursor JSON format, empty `{}` response requirement
++- **[`claude/`](claude/README.md)** — Shell hook + awareness doc, `PreToolUse` JSON format, `settings.json` patching, test script
++- **[`copilot/`](copilot/README.md)** — Rust binary hook + awareness doc, dual format (VS Code Chat vs Copilot CLI)
++- **[`cursor/`](cursor/README.md)** — Shell hook + awareness doc, Cursor JSON format, empty `{}` response requirement
++- **[`gemini/`](gemini/README.md)** — Rust binary hook + awareness doc, `BeforeTool` hook, `settings.json` patching
+ - **[`cline/`](cline/README.md)** — Rules file (prompt-level), `.clinerules` project-local installation
+ - **[`windsurf/`](windsurf/README.md)** — Rules file (prompt-level), `.windsurfrules` workspace-scoped
+ - **[`codex/`](codex/README.md)** — Awareness document, `AGENTS.md` integration, `$CODEX_HOME` or `~/.codex/` location
+-- **[`opencode/`](opencode/README.md)** — TypeScript plugin, `zx` library, `tool.execute.before` event, in-place mutation
+-- **[`pi/`](pi/README.md)** — TypeScript extension, `tool_call` event, `isToolCallEventType` guard, in-place mutation, `~/.pi/agent/extensions/`
+-- **[`hermes/`](hermes/README.md)** — Python plugin, `pre_tool_call` hook, in-place terminal command mutation
++- **[`opencode/`](opencode/README.md)** — TypeScript plugin + awareness doc, `zx` library, `tool.execute.before` event
++- **[`pi/`](pi/README.md)** — TypeScript extension + awareness doc, `tool_call` event, `~/.pi/agent/extensions/`
++- **[`hermes/`](hermes/README.md)** — Python plugin + awareness doc, `pre_tool_call` hook
++- **[`commandcode/`](commandcode/README.md)** — Awareness document, `AGENTS.md` + references, selective signal-preserving policy
+ 
+ ## Supported Agents
+ 
+@@ -52,12 +54,14 @@ Each agent subdirectory has its own README with hook-specific details:
+ | GitHub Copilot CLI | Rust binary (`rtk hook copilot`) | Deny-with-suggestion | No (agent retries) |
+ | Cursor | Rust binary | Transparent rewrite | Yes (`updated_input`) |
+ | Gemini CLI | Rust binary (`rtk hook gemini`) | Transparent rewrite | Yes (`hookSpecificOutput`) |
++| OpenCode | TypeScript plugin (`tool.execute.before`) | In-place mutation | Yes |
+ | Cline / Roo Code | Custom instructions (rules file) | Prompt-level guidance | N/A |
+ | Windsurf | Custom instructions (rules file) | Prompt-level guidance | N/A |
+ | Codex CLI | AGENTS.md / instructions | Prompt-level guidance | N/A |
+ | OpenCode | TypeScript plugin (`tool.execute.before`) | In-place mutation | Yes |
+ | Pi | TypeScript extension (`tool_call` event) | In-place mutation | Yes |
+ | Hermes | Python plugin (`pre_tool_call`) | In-place mutation | Yes |
++| Command Code CLI | AGENTS.md + references | Prompt-level guidance (selective) | N/A (manual prefix) |
+ 
+ ## JSON Formats by Agent
+ 
+diff --git a/hooks/antigravity/rules.md b/hooks/antigravity/rules.md
+index 8ee44bc..b221b18 100644
+--- a/hooks/antigravity/rules.md
++++ b/hooks/antigravity/rules.md
+@@ -1,32 +1,57 @@
+-# RTK - Rust Token Killer (Google Antigravity)
++# RTK — Rust Token Killer (Google Antigravity)
+ 
+-**Usage**: Token-optimized CLI proxy for shell commands.
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
+ 
+-## Rule
++## Decision rule: compress noise, preserve signal
+ 
+-Always prefix shell commands with `rtk` to minimize token consumption.
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
+ 
+-Examples:
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
+ 
+-```bash
+-rtk git status
+-rtk cargo test
+-rtk ls src/
+-rtk grep "pattern" src/
+-rtk find "*.rs" .
+-rtk docker ps
+-rtk gh pr list
+-```
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
++
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
++
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
++
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only for skimming something huge and
++unimportant. (`-u` was removed upstream, use `--ultra-compact`.)
++
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw or `rtk proxy`
++- **Piped output**: RTK can substitute its summary for real content (RTK #1282, #1409) — run anything you'll parse or redirect raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+ ## Meta Commands
+ 
+ ```bash
+-rtk gain              # Show token savings
+-rtk gain --history    # Command history with savings
+-rtk discover          # Find missed RTK opportunities
+-rtk proxy <cmd>       # Run raw (no filtering, for debugging)
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Find missed opportunities (and poor fits to drop)
++rtk proxy <cmd>       # Run raw command without filtering
+ ```
+ 
+-## Why
++## Verification
+ 
+-RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Always use `rtk <cmd>` instead of raw commands.
++```bash
++rtk --version
++rtk gain
++```
+diff --git a/hooks/claude/rtk-awareness.md b/hooks/claude/rtk-awareness.md
+index 0eaf3d5..5bce7b6 100644
+--- a/hooks/claude/rtk-awareness.md
++++ b/hooks/claude/rtk-awareness.md
+@@ -1,29 +1,69 @@
+-# RTK - Rust Token Killer
++# RTK — Rust Token Killer (Claude Code)
+ 
+-**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations)
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
++
++## Hook transparency
++
++You have an RTK hook that automatically rewrites shell commands through `rtk`
++before execution (`rtk hook claude`, registered as a `PreToolUse` hook in
++`settings.json`). This is a convenience, not a mandate — it saves you from
++remembering to prefix every command. You control when fidelity matters: use the
++decision rule below.
++
++## Decision rule: compress noise, preserve signal
++
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
++
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
++
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
++
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
++
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
++
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only for skimming something huge and
++unimportant. (`-u` was removed upstream, use `--ultra-compact`.)
++
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw or `rtk proxy`
++- **Piped output**: RTK can substitute its summary for real content (RTK #1282, #1409) — run anything you'll parse or redirect raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+ ## Meta Commands (always use rtk directly)
+ 
+ ```bash
+-rtk gain              # Show token savings analytics
+-rtk gain --history    # Show command usage history with savings
+-rtk discover          # Analyze Claude Code history for missed opportunities
+-rtk proxy <cmd>       # Execute raw command without filtering (for debugging)
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Analyze history for missed opportunities
++rtk proxy <cmd>       # Execute raw command without filtering
+ ```
+ 
+-## Installation Verification
++## Verification
+ 
+ ```bash
+-rtk --version         # Should show: rtk X.Y.Z
+-rtk gain              # Should work (not "command not found")
+-which rtk             # Verify correct binary
++rtk --version
++rtk gain
++which rtk
+ ```
+ 
+-⚠️ **Name collision**: If `rtk gain` fails, you may have reachingforthejack/rtk (Rust Type Kit) installed instead.
+-
+-## Hook-Based Usage
+-
+-All other commands are automatically rewritten by the Claude Code hook.
+-Example: `git status` → `rtk git status` (transparent, 0 tokens overhead)
+-
+-Refer to CLAUDE.md for full command reference.
++⚠️ **Name collision**: If `rtk gain` fails, you may have reachingforthejack/rtk (Rust Type Kit)
++installed instead.
+diff --git a/hooks/cline/rules.md b/hooks/cline/rules.md
+index 7d6c8af..3ea1836 100644
+--- a/hooks/cline/rules.md
++++ b/hooks/cline/rules.md
+@@ -1,32 +1,57 @@
+-# RTK - Rust Token Killer (Cline)
++# RTK — Rust Token Killer (Cline / Roo Code)
+ 
+-**Usage**: Token-optimized CLI proxy for shell commands.
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
+ 
+-## Rule
++## Decision rule: compress noise, preserve signal
+ 
+-Always prefix shell commands with `rtk` to minimize token consumption.
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
+ 
+-Examples:
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
+ 
+-```bash
+-rtk git status
+-rtk cargo test
+-rtk ls src/
+-rtk grep "pattern" src/
+-rtk find "*.rs" .
+-rtk docker ps
+-rtk gh pr list
+-```
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
++
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
++
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
++
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only for skimming something huge and
++unimportant. (`-u` was removed upstream, use `--ultra-compact`.)
++
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw or `rtk proxy`
++- **Piped output**: RTK can substitute its summary for real content (RTK #1282, #1409) — run anything you'll parse or redirect raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+ ## Meta Commands
+ 
+ ```bash
+-rtk gain              # Show token savings
+-rtk gain --history    # Command history with savings
+-rtk discover          # Find missed RTK opportunities
+-rtk proxy <cmd>       # Run raw (no filtering, for debugging)
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Find missed opportunities (and poor fits to drop)
++rtk proxy <cmd>       # Run raw command without filtering
+ ```
+ 
+-## Why
++## Verification
+ 
+-RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Always use `rtk <cmd>` instead of raw commands.
++```bash
++rtk --version
++rtk gain
++```
+diff --git a/hooks/codex/rtk-awareness.md b/hooks/codex/rtk-awareness.md
+index 7ae285e..f5c07de 100644
+--- a/hooks/codex/rtk-awareness.md
++++ b/hooks/codex/rtk-awareness.md
+@@ -1,26 +1,52 @@
+-# RTK - Rust Token Killer (Codex CLI)
++# RTK — Rust Token Killer (Codex CLI)
+ 
+-**Usage**: Token-optimized CLI proxy for shell commands.
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
+ 
+-## Rule
++## Decision rule: compress noise, preserve signal
+ 
+-Always prefix shell commands with `rtk`.
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
+ 
+-Examples:
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
+ 
+-```bash
+-rtk git status
+-rtk cargo test
+-rtk npm run build
+-rtk pytest -q
+-```
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
++
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
++
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
++
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only for skimming something huge and
++unimportant. (`-u` was removed upstream, use `--ultra-compact`.)
++
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw or `rtk proxy`
++- **Piped output**: RTK can substitute its summary for real content (RTK #1282, #1409) — run anything you'll parse or redirect raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+ ## Meta Commands
+ 
+ ```bash
+-rtk gain            # Token savings analytics
+-rtk gain --history  # Recent command savings history
+-rtk proxy <cmd>     # Run raw command without filtering
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Find missed opportunities (and poor fits to drop)
++rtk proxy <cmd>       # Run raw command without filtering
+ ```
+ 
+ ## Verification
+@@ -28,5 +54,4 @@ rtk proxy <cmd>     # Run raw command without filtering
+ ```bash
+ rtk --version
+ rtk gain
+-which rtk
+ ```
+diff --git a/hooks/copilot/rtk-awareness.md b/hooks/copilot/rtk-awareness.md
+index 185f460..a84dc12 100644
+--- a/hooks/copilot/rtk-awareness.md
++++ b/hooks/copilot/rtk-awareness.md
+@@ -1,60 +1,68 @@
+-# RTK — Copilot Integration (VS Code Copilot Chat + Copilot CLI)
++# RTK Token Optimization (Copilot — VS Code Chat + CLI)
+ 
+-**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations)
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
+ 
+-## What's automatic
++## Decision rule: compress noise, preserve signal
+ 
+-The `.github/copilot-instructions.md` file is loaded at session start by both Copilot CLI and VS Code Copilot Chat.
+-It instructs Copilot to prefix commands with `rtk` automatically.
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
+ 
+-The `.github/hooks/rtk-rewrite.json` hook adds a `PreToolUse` safety net via `rtk hook` —
+-a cross-platform Rust binary that intercepts raw bash tool calls and rewrites them.
+-No shell scripts, no `jq` dependency, works on Windows natively.
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
+ 
+-## Meta commands (always use directly)
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
+ 
+-```bash
+-rtk gain              # Token savings dashboard for this session
+-rtk gain --history    # Per-command history with savings %
+-rtk discover          # Scan session history for missed rtk opportunities
+-rtk proxy <cmd>       # Run raw (no filtering) but still track it
+-```
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
+ 
+-## Installation verification
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
+ 
+-```bash
+-rtk --version   # Should print: rtk X.Y.Z
+-rtk gain        # Should show a dashboard (not "command not found")
+-which rtk       # Verify correct binary path
+-```
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only. (`-u` was removed upstream, use
++`--ultra-compact`.)
+ 
+-> ⚠️ **Name collision**: If `rtk gain` fails, you may have `reachingforthejack/rtk`
+-> (Rust Type Kit) installed instead. Check `which rtk` and reinstall from rtk-ai/rtk.
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw
++- **Piped output**: RTK can substitute summary for real content (RTK #1282, #1409) — run anything you'll parse raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+-## How the hook works
++## Hook behavior
+ 
+-`rtk hook` reads `PreToolUse` JSON from stdin, detects the agent format, and responds appropriately:
++`rtk hook copilot` intercepts bash tool calls via `PreToolUse` and rewrites them
++automatically. VS Code Copilot Chat gets transparent rewrites (`updatedInput`);
++Copilot CLI gets deny-with-suggestion until it supports `updatedInput`. The hook
++is a convenience, not a mandate — you control when fidelity matters.
+ 
+-**VS Code Copilot Chat** (supports `updatedInput` — transparent rewrite, no denial):
+-1. Agent runs `git status` → `rtk hook` intercepts via `PreToolUse`
+-2. `rtk hook` detects VS Code format (`tool_name`/`tool_input` keys)
+-3. Returns `hookSpecificOutput.updatedInput.command = "rtk git status"`
+-4. Agent runs the rewritten command silently — no denial, no retry
++## Meta Commands
+ 
+-**GitHub Copilot CLI** (deny-with-suggestion — CLI ignores `updatedInput` today, see [issue #2013](https://github.com/github/copilot-cli/issues/2013)):
+-1. Agent runs `git status` → `rtk hook` intercepts via `PreToolUse`
+-2. `rtk hook` detects Copilot CLI format (`toolName`/`toolArgs` keys)
+-3. Returns `permissionDecision: deny` with reason: `"Token savings: use 'rtk git status' instead"`
+-4. Copilot reads the reason and re-runs `rtk git status`
++```bash
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Find missed opportunities (and poor fits to drop)
++rtk proxy <cmd>       # Run raw command without filtering
++```
+ 
+-When Copilot CLI adds `updatedInput` support, only `rtk hook` needs updating — no config changes.
++## Verification
+ 
+-## Integration comparison
++```bash
++rtk --version
++rtk gain
++which rtk
++```
+ 
+-| Tool                  | Mechanism                               | Hook output              | File                               |
+-|-----------------------|-----------------------------------------|--------------------------|------------------------------------|
+-| Claude Code           | `PreToolUse` hook with `updatedInput`   | Transparent rewrite      | `hooks/rtk-rewrite.sh`             |
+-| VS Code Copilot Chat  | `PreToolUse` hook with `updatedInput`   | Transparent rewrite      | `.github/hooks/rtk-rewrite.json`   |
+-| GitHub Copilot CLI    | `PreToolUse` deny-with-suggestion       | Denial + retry           | `.github/hooks/rtk-rewrite.json`   |
+-| OpenCode              | Plugin `tool.execute.before`            | Transparent rewrite      | `hooks/opencode-rtk.ts`            |
+-| (any)                 | Custom instructions                     | Prompt-level guidance    | `.github/copilot-instructions.md`  |
++> ⚠️ **Name collision**: If `rtk gain` fails, you may have `reachingforthejack/rtk`
++> (Rust Type Kit) installed instead.
+diff --git a/hooks/kilocode/rules.md b/hooks/kilocode/rules.md
+index 53d7645..9e178ef 100644
+--- a/hooks/kilocode/rules.md
++++ b/hooks/kilocode/rules.md
+@@ -1,32 +1,57 @@
+-# RTK - Rust Token Killer (Kilo Code)
++# RTK — Rust Token Killer (Kilo Code)
+ 
+-**Usage**: Token-optimized CLI proxy for shell commands.
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
+ 
+-## Rule
++## Decision rule: compress noise, preserve signal
+ 
+-Always prefix shell commands with `rtk` to minimize token consumption.
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
+ 
+-Examples:
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
+ 
+-```bash
+-rtk git status
+-rtk cargo test
+-rtk ls src/
+-rtk grep "pattern" src/
+-rtk find "*.rs" .
+-rtk docker ps
+-rtk gh pr list
+-```
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
++
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
++
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
++
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only for skimming something huge and
++unimportant. (`-u` was removed upstream, use `--ultra-compact`.)
++
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw or `rtk proxy`
++- **Piped output**: RTK can substitute its summary for real content (RTK #1282, #1409) — run anything you'll parse or redirect raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+ ## Meta Commands
+ 
+ ```bash
+-rtk gain              # Show token savings
+-rtk gain --history    # Command history with savings
+-rtk discover          # Find missed RTK opportunities
+-rtk proxy <cmd>       # Run raw (no filtering, for debugging)
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Find missed opportunities (and poor fits to drop)
++rtk proxy <cmd>       # Run raw command without filtering
+ ```
+ 
+-## Why
++## Verification
+ 
+-RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Always use `rtk <cmd>` instead of raw commands.
++```bash
++rtk --version
++rtk gain
++```
+diff --git a/hooks/windsurf/rules.md b/hooks/windsurf/rules.md
+index 8491f5a..432b705 100644
+--- a/hooks/windsurf/rules.md
++++ b/hooks/windsurf/rules.md
+@@ -1,32 +1,57 @@
+-# RTK - Rust Token Killer (Windsurf)
++# RTK — Rust Token Killer (Windsurf)
+ 
+-**Usage**: Token-optimized CLI proxy for shell commands.
++**Usage**: Token-optimized CLI proxy (60-90% savings on dev operations).
+ 
+-## Rule
++## Decision rule: compress noise, preserve signal
+ 
+-Always prefix shell commands with `rtk` to minimize token consumption.
++Use `rtk <cmd>` when output is **large, repetitive, low-stakes** — skim, not
++study. Run the command **raw (no `rtk`)** when you need every character.
+ 
+-Examples:
++### 🔴 Keep full fidelity — run raw
++- **Diff/patch you'll apply**: `git diff`, `git show` raw — exact bytes matter
++- **Structured output you'll parse**: JSON, `--format`, anything piped — compression can corrupt structure
++- **Small output** (<30 lines): nothing to save, real risk of dropping the one line you need
++- **Secrets / exact config**: never reason about a lossy view
++- **Files to edit**: use the native Read tool (lossless; bypasses RTK anyway)
++- **Streaming/follow** (`-f`, `tail -f`): RTK buffers, can hang — run raw
+ 
+-```bash
+-rtk git status
+-rtk cargo test
+-rtk ls src/
+-rtk grep "pattern" src/
+-rtk find "*.rs" .
+-rtk docker ps
+-rtk gh pr list
+-```
++### 🟡 Default mode only (plain `rtk`, never `--ultra-compact`)
++- `rtk cargo test`, `rtk pytest`, `rtk go test`, `rtk jest`, `rtk vitest` — keeps failures, drops passes
++- `rtk cargo build`, `rtk tsc`, `rtk eslint`, `rtk ruff check` — keeps diagnostics, drops progress
++- `rtk err <cmd>` — errors-only filter
++
++### 🟢 Compress freely (skim-only)
++- `rtk ls`, `rtk git status`, `rtk git log`, `rtk docker ps`, `rtk docker images`
++- `rtk kubectl get pods`, `rtk pip list`, `rtk pnpm list`
++- `rtk cat app.log` (static triage — NOT with `-f`/follow)
++
++When unsure, start raw. One deliberate re-run is fine; blind repeated re-runs
++erase the savings.
++
++## Never default to lossy modes
++Plain `rtk <cmd>` keeps the signal — errors, diffs, stack traces, exit codes —
++and strips only noise. `--ultra-compact`, `rtk read … -l aggressive`, and
++`rtk smart` are **lossy** — opt-in only for skimming something huge and
++unimportant. (`-u` was removed upstream, use `--ultra-compact`.)
++
++## Harness safety
++- **Don't wrap streaming/follow** (`-f`, `tail -f`, growing log) — RTK buffers
++- **Exit codes**: trust the raw exit code for pass/fail verdicts; if unsure, re-run raw or `rtk proxy`
++- **Piped output**: RTK can substitute its summary for real content (RTK #1282, #1409) — run anything you'll parse or redirect raw
++- **Native tools**: prefer built-in file/search tools over `rtk read/grep/find`
+ 
+ ## Meta Commands
+ 
+ ```bash
+-rtk gain              # Show token savings
+-rtk gain --history    # Command history with savings
+-rtk discover          # Find missed RTK opportunities
+-rtk proxy <cmd>       # Run raw (no filtering, for debugging)
++rtk gain              # Token savings analytics
++rtk gain --history    # Command usage history with savings
++rtk discover          # Find missed opportunities (and poor fits to drop)
++rtk proxy <cmd>       # Run raw command without filtering
+ ```
+ 
+-## Why
++## Verification
+ 
+-RTK filters and compresses command output before it reaches the LLM context, saving 60-90% tokens on common operations. Always use `rtk <cmd>` instead of raw commands.
++```bash
++rtk --version
++rtk gain
++```
+diff --git a/src/hooks/constants.rs b/src/hooks/constants.rs
+index 23d2e10..e4dd354 100644
+--- a/src/hooks/constants.rs
++++ b/src/hooks/constants.rs
+@@ -39,3 +39,9 @@ pub const HERMES_PLUGINS_SUBDIR: &str = "plugins";
+ pub const HERMES_PLUGIN_NAME: &str = "rtk-rewrite";
+ pub const HERMES_PLUGIN_INIT_FILE: &str = "__init__.py";
+ pub const HERMES_PLUGIN_MANIFEST_FILE: &str = "plugin.yaml";
++
++pub const COMMANDCODE_DIR: &str = ".commandcode";
++pub const COMMANDCODE_AGENTS_FILE: &str = "AGENTS.md";
++pub const COMMANDCODE_REFERENCES_SUBDIR: &str = "references";
++pub const COMMANDCODE_COMMANDS_REF: &str = "commands.md";
++pub const COMMANDCODE_ANALYTICS_REF: &str = "analytics.md";
+diff --git a/src/hooks/init.rs b/src/hooks/init.rs
+index d083d06..a9808c7 100644
+--- a/src/hooks/init.rs
++++ b/src/hooks/init.rs
+@@ -13,11 +13,13 @@ use crate::hooks::constants::{
+ };
+ 
+ use super::constants::{
+-    BEFORE_TOOL_KEY, CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CODEX_DIR, CURSOR_HOOK_COMMAND,
+-    GEMINI_HOOK_FILE, HERMES_DIR, HERMES_PLUGINS_SUBDIR, HERMES_PLUGIN_INIT_FILE,
+-    HERMES_PLUGIN_MANIFEST_FILE, HERMES_PLUGIN_NAME, HOOKS_JSON, HOOKS_SUBDIR,
+-    PI_CODING_AGENT_DIR_ENV, PI_DIR, PI_EXTENSIONS_SUBDIR, PI_LOCAL_DIR, PI_PLUGIN_FILE,
+-    PRE_TOOL_USE_KEY, REWRITE_HOOK_FILE, SETTINGS_JSON,
++    BEFORE_TOOL_KEY, CLAUDE_DIR, CLAUDE_HOOK_COMMAND, CODEX_DIR, COMMANDCODE_AGENTS_FILE,
++    COMMANDCODE_ANALYTICS_REF, COMMANDCODE_COMMANDS_REF, COMMANDCODE_DIR,
++    COMMANDCODE_REFERENCES_SUBDIR, CURSOR_HOOK_COMMAND, GEMINI_HOOK_FILE, HERMES_DIR,
++    HERMES_PLUGINS_SUBDIR, HERMES_PLUGIN_INIT_FILE, HERMES_PLUGIN_MANIFEST_FILE,
++    HERMES_PLUGIN_NAME, HOOKS_JSON, HOOKS_SUBDIR, PI_CODING_AGENT_DIR_ENV, PI_DIR,
++    PI_EXTENSIONS_SUBDIR, PI_LOCAL_DIR, PI_PLUGIN_FILE, PRE_TOOL_USE_KEY, REWRITE_HOOK_FILE,
++    SETTINGS_JSON,
+ };
+ use super::integrity;
+ 
+@@ -30,6 +32,15 @@ const PI_PLUGIN: &str = include_str!("../../hooks/pi/rtk.ts");
+ // Embedded slim RTK awareness instructions
+ const RTK_SLIM: &str = include_str!("../../hooks/claude/rtk-awareness.md");
+ const RTK_SLIM_CODEX: &str = include_str!("../../hooks/codex/rtk-awareness.md");
++const RTK_SLIM_GEMINI: &str = include_str!("../../hooks/gemini/rtk-awareness.md");
++
++// Embedded Command Code instructions
++const RTK_SLIM_COMMANDCODE: &str =
++    include_str!("../../hooks/commandcode/rtk-awareness.md");
++const COMMANDCODE_COMMANDS_CONTENT: &str =
++    include_str!("../../hooks/commandcode/references/commands.md");
++const COMMANDCODE_ANALYTICS_CONTENT: &str =
++    include_str!("../../hooks/commandcode/references/analytics.md");
+ 
+ /// Template written by `rtk init` when no filters.toml exists yet.
+ const FILTERS_TEMPLATE: &str = r#"# Project-local RTK filters — commit this file with your repo.
+@@ -2326,6 +2337,121 @@ fn run_codex_mode_with_paths(
+     Ok(())
+ }
+ 
++// ─── Command Code CLI support ────────────────────────────────────────
++
++pub fn run_commandcode_mode(global: bool, ctx: InitContext) -> Result<()> {
++    let commandcode_dir = if global {
++        resolve_home_subdir(COMMANDCODE_DIR)?
++    } else {
++        PathBuf::from(COMMANDCODE_DIR)
++    };
++    run_commandcode_mode_at(&commandcode_dir, global, ctx)
++}
++
++fn run_commandcode_mode_at(dir: &Path, global: bool, ctx: InitContext) -> Result<()> {
++    let InitContext { dry_run, .. } = ctx;
++
++    let ref_dir = dir.join(COMMANDCODE_REFERENCES_SUBDIR);
++    if !dry_run {
++        fs::create_dir_all(&ref_dir).with_context(|| {
++            format!("Failed to create reference dir: {}", ref_dir.display())
++        })?;
++    }
++
++    let agents_path = dir.join(COMMANDCODE_AGENTS_FILE);
++    let commands_path = ref_dir.join(COMMANDCODE_COMMANDS_REF);
++    let analytics_path = ref_dir.join(COMMANDCODE_ANALYTICS_REF);
++
++    write_if_changed(
++        &agents_path,
++        RTK_SLIM_COMMANDCODE,
++        "Command Code AGENTS.md",
++        ctx,
++    )?;
++    write_if_changed(
++        &commands_path,
++        COMMANDCODE_COMMANDS_CONTENT,
++        "Command Code commands reference",
++        ctx,
++    )?;
++    write_if_changed(
++        &analytics_path,
++        COMMANDCODE_ANALYTICS_CONTENT,
++        "Command Code analytics reference",
++        ctx,
++    )?;
++
++    if !dry_run {
++        println!("\nRTK configured for Command Code CLI.\n");
++        println!("  AGENTS.md:  {}", agents_path.display());
++        println!("  References: {}/", ref_dir.display());
++        if global {
++            println!("\n  Command Code CLI reads ~/.commandcode/AGENTS.md automatically.");
++        } else {
++            println!("\n  Command Code CLI reads .commandcode/AGENTS.md from the project root.");
++        }
++        println!("  Restart Command Code. Test with: git status\n");
++    }
++
++    Ok(())
++}
++
++pub fn uninstall_commandcode(global: bool, ctx: InitContext) -> Result<()> {
++    let InitContext { verbose, dry_run } = ctx;
++    let dir = if global {
++        resolve_home_subdir(COMMANDCODE_DIR)?
++    } else {
++        PathBuf::from(COMMANDCODE_DIR)
++    };
++
++    let agents_path = dir.join(COMMANDCODE_AGENTS_FILE);
++    let ref_dir = dir.join(COMMANDCODE_REFERENCES_SUBDIR);
++
++    let mut removed = Vec::new();
++
++    if agents_path.exists() {
++        if dry_run {
++            println!("[dry-run] would remove {}", agents_path.display());
++        } else {
++            fs::remove_file(&agents_path)
++                .with_context(|| format!("Failed to remove {}", agents_path.display()))?;
++            if verbose > 0 {
++                eprintln!("Removed {}", agents_path.display());
++            }
++        }
++        removed.push(agents_path.display().to_string());
++    }
++
++    if ref_dir.exists() {
++        if dry_run {
++            println!("[dry-run] would remove {}/", ref_dir.display());
++        } else {
++            fs::remove_dir_all(&ref_dir)
++                .with_context(|| format!("Failed to remove {}/", ref_dir.display()))?;
++            if verbose > 0 {
++                eprintln!("Removed {}/", ref_dir.display());
++            }
++        }
++        removed.push(format!("{}/", ref_dir.display()));
++    }
++
++    if removed.is_empty() {
++        println!("RTK Command Code support was not installed (nothing to remove)");
++    } else {
++        let header = if dry_run {
++            "[dry-run] would uninstall RTK for Command Code CLI:"
++        } else {
++            "RTK uninstalled for Command Code CLI:"
++        };
++        println!("{}", header);
++        for item in removed {
++            println!("  - {}", item);
++        }
++    }
++
++    Ok(())
++}
++
+ // --- upsert_rtk_block: idempotent RTK block management ---
+ 
+ #[derive(Debug, Clone, Copy, PartialEq)]
+@@ -3656,8 +3782,7 @@ pub fn run_gemini(
+     // 2. Install GEMINI.md (RTK awareness for Gemini)
+     if !hook_only {
+         let gemini_md_path = gemini_dir.join(GEMINI_MD);
+-        // Reuse the same slim RTK awareness content
+-        write_if_changed(&gemini_md_path, RTK_SLIM, GEMINI_MD, ctx)?;
++        write_if_changed(&gemini_md_path, RTK_SLIM_GEMINI, GEMINI_MD, ctx)?;
+     }
+ 
+     // 3. Patch ~/.gemini/settings.json
+diff --git a/src/main.rs b/src/main.rs
+index cd69ea7..6642d1d 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -50,6 +50,8 @@ pub enum AgentTarget {
+     Pi,
+     /// Hermes CLI
+     Hermes,
++    /// Command Code CLI
++    CommandCode,
+ }
+ 
+ #[derive(Parser)]
+@@ -376,6 +378,10 @@ enum Commands {
+         #[arg(long)]
+         codex: bool,
+ 
++        /// Target Command Code CLI (uses AGENTS.md + references, no Claude hook patching)
++        #[arg(long)]
++        command_code: bool,
++
+         /// Install GitHub Copilot integration (VS Code + CLI)
+         #[arg(long)]
+         copilot: bool,
+@@ -1947,6 +1953,7 @@ fn run_cli() -> Result<i32> {
+             no_patch,
+             uninstall,
+             codex,
++            command_code,
+             copilot,
+             dry_run,
+         } => {
+@@ -1962,6 +1969,8 @@ fn run_cli() -> Result<i32> {
+                 } else {
+                     hooks::init::uninstall_copilot(ctx)?;
+                 }
++            } else if uninstall && command_code {
++                hooks::init::uninstall_commandcode(global, ctx)?;
+             } else if uninstall {
+                 uninstall_init_dispatch(
+                     agent,
+@@ -2003,6 +2012,10 @@ fn run_cli() -> Result<i32> {
+                 hooks::init::run_antigravity_mode(ctx)?;
+             } else if agent == Some(AgentTarget::Hermes) {
+                 hooks::init::run_hermes_mode(ctx)?;
++            } else if command_code {
++                hooks::init::run_commandcode_mode(global, ctx)?;
++            } else if agent == Some(AgentTarget::CommandCode) {
++                hooks::init::run_commandcode_mode(global, ctx)?;
+             } else {
+                 let install_opencode = opencode;
+                 let install_claude = !opencode;
