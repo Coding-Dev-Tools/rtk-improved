@@ -1,7 +1,7 @@
 # RTK Improved — Universal Agent Integrations for RTK
 
-[RTK](https://github.com/rtk-ai/rtk) (Rust Token Killer) integrates with AI
-coding agents to save 60-90% LLM tokens on shell command output. This repository
+[RTK] (Rust Token Killer) integrates with AI
+coding agents and "claims" to save 60-90% LLM tokens on shell command output. This repository
 provides **selective, signal-preserving awareness docs** for every supported
 agent — replacing the old "always prefix everything" approach with a
 three-tier fidelity ladder that optimizes for **net savings**, not just gross
@@ -109,4 +109,4 @@ canonical source for those docs — edits here flow into the next RTK release.
 
 ## License
 
-Apache 2.0 — same as [RTK](https://github.com/rtk-ai/rtk).
+Apache 2.0 — same as [RTK].
