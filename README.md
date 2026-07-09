@@ -78,11 +78,11 @@ rtk-improved/
 ├── BENCHMARK.md                 # Four-arm test design (base vs. rtk-ai vs. rtk-improved)
 ├── CONTRIBUTING.md              # How to contribute
 ├── LICENSE                      # Apache 2.0
-├── SKILL.md                     # Command Code skill definition
+├── SKILL.md                     # Universal RTK skill definition
 ├── install.sh                   # Linux/macOS multi-agent installer
 ├── install.ps1                  # Windows multi-agent installer
 ├── agents/                      # Per-agent awareness docs
-│   ├── command-code/            # Command Code CLI (AGENTS.md + references)
+│   ├── command-code/            # Command Code CLI awareness docs
 │   ├── claude-code/             # Claude Code (awareness doc)
 │   ├── copilot/                 # GitHub Copilot (awareness doc)
 │   ├── cursor/                  # Cursor (awareness doc)

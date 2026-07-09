@@ -21,7 +21,7 @@ updated as we investigate.
 This project ships Markdown instructions and shell/PowerShell installers. The
 most relevant risks are:
 
-- The `install.sh` / `install.ps1` scripts, which write to `~/.commandcode/`.
+- The `install.sh` / `install.ps1` scripts, which write to agent-specific config directories (`~/.commandcode/`, `~/.config/rtk/`, etc.).
 - The `curl … | sh` and `iwr … | iex` one-liners documented in the README.
 
 If you find a way these could be abused (for example path traversal or

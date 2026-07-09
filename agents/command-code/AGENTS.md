@@ -1,4 +1,4 @@
-# RTK Token Optimization for Command Code
+# RTK Token Optimization
 
 RTK (Rust Token Killer) compresses **shell command output** before it enters the
 context window. Used well it cuts tokens on noisy commands *and* sharpens context
@@ -9,8 +9,7 @@ These rules keep it net-positive.
 ## Setup
 
 RTK is optional. If `rtk --version` fails or `rtk` isn't on PATH, run commands
-normally — never block work to install it. There's no auto-rewrite hook for
-Command Code yet, so prefix commands yourself per the tiers in
+normally — never block work to install it. Some agents have auto-rewrite hooks, others don't. For agents without them, prefix commands yourself per the tiers in
 @references/commands.md.
 
 ## The one rule: compress noise, preserve signal
