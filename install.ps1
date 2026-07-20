@@ -37,21 +37,6 @@ Requires:
 "@
     return
 }
-  .\install.ps1 -Quiet     Silent install (no prompts; auto-installs RTK)
-  .\install.ps1 -NoRtk     Do not install the RTK binary, only the instructions
-  iwr <raw>/install.ps1 | iex                Install directly from the web
-
-What it does:
-  1. Installs the RTK binary from its latest GitHub release if rtk is missing
-  2. Installs AGENTS.md + references\ to ~\.commandcode\
-     (copies sibling files when run from a clone, otherwise downloads them)
-  3. Confirms Command Code CLI will read the instructions
-
-Requires:
-  - Command Code CLI (cmd, cmdc, or command-code in PATH)
-"@
-    return
-}
 
 # --- Helpers ---
 function Write-Step($msg) { Write-Host "  => $msg" -ForegroundColor Cyan }
@@ -182,7 +167,7 @@ if ($testContent -match "RTK") {
 Write-Host ""
 Write-Host "Installation complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  RTK instructions installed for $agentName."
+Write-Host "  RTK instructions installed for $(if ($Agent) { $Agent } else { "your agent" })."
 Write-Host "  Restart any active agent sessions to apply."
 Write-Host ""
 Write-Host "  Verify: rtk gain"
